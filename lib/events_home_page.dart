@@ -27,7 +27,13 @@ class EventsHomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Eventos Disponibles'),
+        title: Semantics(
+          header: true,
+          label: 'Eventos Disponibles',
+          child: const ExcludeSemantics(
+            child: Text('Eventos Disponibles'),
+          ),
+        ),
         elevation: 0,
       ),
       body: ListenableBuilder(
@@ -36,8 +42,11 @@ class EventsHomePage extends StatelessWidget {
           final events = eventsNotifier.events;
 
           if (events.isEmpty) {
-            return const Center(
-              child: CircularProgressIndicator(),
+            return Semantics(
+              label: 'Cargando eventos',
+              child: const Center(
+                child: CircularProgressIndicator(),
+              ),
             );
           }
 
@@ -125,128 +134,153 @@ class _EventCard extends StatelessWidget {
     final dateFormat = DateFormat('dd MMM yyyy', 'es_ES');
     final theme = Theme.of(context);
 
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      elevation: 2,
-      child: InkWell(
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Event image
-            Expanded(
-              flex: 3,
-              child: Container(
-                width: double.infinity,
-                color: theme.colorScheme.surfaceVariant,
-                child: Image.network(
-                  event.imageUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Center(
-                      child: Icon(
-                        Icons.event,
-                        size: 48,
-                        color: theme.colorScheme.onSurfaceVariant,
+    final availabilityText = event.isSoldOut 
+      ? 'Agotado' 
+      : '${event.availableTickets} entradas disponibles';
+    
+    final semanticValue = 'Fecha: ${dateFormat.format(event.date)}. '
+        'Ubicación: ${event.location}. '
+        'Precio: €${event.price.toStringAsFixed(2)}. '
+        '$availabilityText.';
+
+    return Semantics(
+      button: true,
+      label: 'Evento: ${event.title}',
+      value: semanticValue,
+      hint: 'Toca para ver detalles y reservar entradas',
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        elevation: 2,
+        child: InkWell(
+          onTap: onTap,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Event image
+              Expanded(
+                flex: 3,
+                child: Container(
+                  width: double.infinity,
+                  color: theme.colorScheme.surfaceVariant,
+                  child: Semantics(
+                    image: true,
+                    label: 'Imagen del evento ${event.title}',
+                    child: ExcludeSemantics(
+                      child: Image.network(
+                        event.imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Center(
+                            child: Icon(
+                              Icons.event,
+                              size: 48,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
+                    ),
+                  ),
                 ),
               ),
-            ),
             // Event details
             Expanded(
               flex: 2,
               child: Padding(
                 padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      event.title,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.calendar_today,
-                          size: 14,
-                          color: theme.colorScheme.onSurfaceVariant,
+                child: ExcludeSemantics(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        event.title,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
                         ),
-                        const SizedBox(width: 4),
-                        Text(
-                          dateFormat.format(event.date),
-                          style: theme.textTheme.bodySmall?.copyWith(
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.calendar_today,
+                            size: 14,
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.location_on,
-                          size: 14,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            event.location,
+                          const SizedBox(width: 4),
+                          Text(
+                            dateFormat.format(event.date),
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                      ],
-                    ),
-                    const Spacer(),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          '€${event.price.toStringAsFixed(2)}',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            color: theme.colorScheme.primary,
-                            fontWeight: FontWeight.bold,
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.location_on,
+                            size: 14,
+                            color: theme.colorScheme.onSurfaceVariant,
                           ),
-                        ),
-                        if (event.isSoldOut)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.error,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
+                          const SizedBox(width: 4),
+                          Expanded(
                             child: Text(
-                              'AGOTADO',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: theme.colorScheme.onError,
-                                fontWeight: FontWeight.bold,
+                              event.location,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Spacer(),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '€${event.price.toStringAsFixed(2)}',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          if (event.isSoldOut)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.error,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                'AGOTADO',
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: theme.colorScheme.onError,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            )
+                          else
+                            Text(
+                              '${event.availableTickets} disponibles',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
                               ),
                             ),
-                          )
-                        else
-                          Text(
-                            '${event.availableTickets} disponibles',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
                 ),
               ),
             ),
