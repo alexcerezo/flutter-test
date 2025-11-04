@@ -1,0 +1,143 @@
+name: CI - Integración Continua
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  # Job principal de análisis y testing
+  test-and-analyze:
+    name: Tests y Análisis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+      
+      - name: Setup Java (requerido para Android)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+          cache: true
+      
+      - name: Verificar instalación de Flutter
+        run: |
+          flutter --version
+          flutter doctor -v
+      
+      - name: Cache de dependencias pub
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            ${{ github.workspace }}/.dart_tool
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+      
+      - name: Obtener dependencias
+        run: flutter pub get
+      
+      - name: Verificar formato del código
+        run: dart format --output=none --set-exit-if-changed .
+        continue-on-error: true
+      
+      - name: Análisis estático del código
+        run: flutter analyze --no-fatal-infos
+      
+      - name: Ejecutar tests unitarios
+        run: flutter test --coverage --reporter expanded
+      
+      - name: Upload coverage to Codecov (opcional)
+        if: github.event_name == 'push'
+        uses: codecov/codecov-action@v4
+        continue-on-error: true
+        with:
+          files: ./coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+      
+      - name: Generar reporte de cobertura
+        if: always()
+        run: |
+          if [ -d "coverage" ]; then
+            echo "Cobertura generada correctamente"
+            ls -lh coverage/
+          fi
+
+  # Job de build para verificar compilación
+  build-check:
+    name: Verificar Compilación
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: test-and-analyze
+    
+    strategy:
+      matrix:
+        platform: [android, web]
+    
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+      
+      - name: Setup Java (para Android)
+        if: matrix.platform == 'android'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+          cache: true
+      
+      - name: Cache de dependencias pub
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            ${{ github.workspace }}/.dart_tool
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+      
+      - name: Obtener dependencias
+        run: flutter pub get
+      
+      - name: Build Android APK
+        if: matrix.platform == 'android'
+        run: flutter build apk --debug --split-per-abi
+      
+      - name: Build Web
+        if: matrix.platform == 'web'
+        run: flutter build web --web-renderer canvaskit
+      
+      - name: Upload artifact Android
+        if: matrix.platform == 'android'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk
+          path: build/app/outputs/flutter-apk/*.apk
+          retention-days: 5
+      
+      - name: Upload artifact Web
+        if: matrix.platform == 'web'
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: build/web/
+          retention-days: 5

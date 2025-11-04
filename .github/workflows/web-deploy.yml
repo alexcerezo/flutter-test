@@ -1,0 +1,139 @@
+name: CD - Web Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Entorno de despliegue'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+jobs:
+  build-and-deploy-web:
+    name: Build y Deploy Web
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+          cache: true
+      
+      - name: Cache de dependencias pub
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            ${{ github.workspace }}/.dart_tool
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+      
+      - name: Obtener dependencias
+        run: flutter pub get
+      
+      - name: Ejecutar tests (pre-deploy)
+        run: flutter test
+      
+      - name: Build Web Production
+        run: |
+          flutter build web \
+            --release \
+            --web-renderer canvaskit \
+            --base-href /
+      
+      - name: Optimizar build web
+        run: |
+          # Comprimir archivos para mejor rendimiento
+          find build/web -type f \( -name "*.js" -o -name "*.css" -o -name "*.html" \) -exec gzip -k {} \;
+      
+      - name: Upload artifact Web
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-production-build
+          path: build/web/
+          retention-days: 30
+      
+      - name: Deploy to Firebase Hosting (Staging)
+        if: github.event.inputs.environment == 'staging' || github.event_name == 'workflow_dispatch'
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        continue-on-error: true
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}'
+          projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
+          channelId: staging
+          expires: 30d
+      
+      - name: Deploy to Firebase Hosting (Production)
+        if: (github.event.inputs.environment == 'production' || github.ref == 'refs/heads/main') && github.event_name != 'pull_request'
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        continue-on-error: true
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}'
+          projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
+          channelId: live
+      
+      - name: Deploy to GitHub Pages (alternativa)
+        if: github.event.inputs.environment == 'production' || github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v4
+        continue-on-error: true
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build/web
+          cname: ${{ secrets.CUSTOM_DOMAIN }}
+      
+      - name: Deploy to AWS S3 (opcional)
+        if: github.event.inputs.environment == 'production'
+        continue-on-error: true
+        run: |
+          if [ -n "${{ secrets.AWS_ACCESS_KEY_ID }}" ]; then
+            aws s3 sync build/web/ s3://${{ secrets.AWS_S3_BUCKET }}/ \
+              --delete \
+              --cache-control "public, max-age=31536000" \
+              --exclude "index.html" \
+              --exclude "flutter_service_worker.js"
+            
+            aws s3 cp build/web/index.html s3://${{ secrets.AWS_S3_BUCKET }}/index.html \
+              --cache-control "no-cache"
+            
+            aws s3 cp build/web/flutter_service_worker.js s3://${{ secrets.AWS_S3_BUCKET }}/flutter_service_worker.js \
+              --cache-control "no-cache"
+            
+            # Invalidar caché de CloudFront si existe
+            if [ -n "${{ secrets.AWS_CLOUDFRONT_DISTRIBUTION_ID }}" ]; then
+              aws cloudfront create-invalidation \
+                --distribution-id ${{ secrets.AWS_CLOUDFRONT_DISTRIBUTION_ID }} \
+                --paths "/*"
+            fi
+          fi
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+      
+      - name: Comentar URL de preview en PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        continue-on-error: true
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🚀 Web build completado! El preview estará disponible en Firebase Hosting.'
+            })

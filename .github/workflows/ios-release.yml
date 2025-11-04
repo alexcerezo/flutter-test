@@ -1,0 +1,150 @@
+name: CD - iOS Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Tipo de release'
+        required: true
+        type: choice
+        options:
+          - beta
+          - production
+      version_name:
+        description: 'Nombre de versión (ej: 1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  build-ios-release:
+    name: Build iOS Release
+    runs-on: macos-latest
+    timeout-minutes: 60
+    
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+          cache: true
+      
+      - name: Cache de dependencias pub
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            ${{ github.workspace }}/.dart_tool
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+      
+      - name: Obtener dependencias
+        run: flutter pub get
+      
+      - name: Ejecutar tests (pre-deploy)
+        run: flutter test
+      
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: 'latest-stable'
+      
+      - name: Instalar CocoaPods
+        run: |
+          cd ios
+          pod install
+      
+      - name: Configurar certificados de firma iOS
+        env:
+          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          IOS_PROVISION_PROFILE_BASE64: ${{ secrets.IOS_PROVISION_PROFILE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+        run: |
+          # Crear directorio temporal para certificados
+          mkdir -p ~/secrets
+          
+          # Decodificar certificado
+          echo "$IOS_CERTIFICATE_BASE64" | base64 --decode > ~/secrets/certificate.p12
+          
+          # Decodificar provisioning profile
+          echo "$IOS_PROVISION_PROFILE_BASE64" | base64 --decode > ~/secrets/profile.mobileprovision
+          
+          # Crear keychain temporal
+          security create-keychain -p "" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          
+          # Importar certificado al keychain
+          security import ~/secrets/certificate.p12 -k build.keychain -P "$IOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
+          
+          # Instalar provisioning profile
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp ~/secrets/profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+      
+      - name: Build iOS IPA
+        run: |
+          flutter build ipa --release \
+            --build-name=${{ github.event.inputs.version_name }} \
+            --build-number=${{ github.run_number }} \
+            --export-options-plist=ios/ExportOptions.plist
+      
+      - name: Limpiar archivos sensibles
+        if: always()
+        run: |
+          security delete-keychain build.keychain || true
+          rm -rf ~/secrets || true
+      
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-release-ipa-${{ github.event.inputs.version_name }}
+          path: build/ios/ipa/*.ipa
+          retention-days: 90
+      
+      - name: Deploy to Firebase App Distribution (Beta)
+        if: github.event.inputs.release_type == 'beta'
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        continue-on-error: true
+        with:
+          appId: ${{ secrets.FIREBASE_APP_ID_IOS }}
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          groups: testers
+          file: build/ios/ipa/*.ipa
+          releaseNotes: |
+            Version: ${{ github.event.inputs.version_name }}
+            Build: ${{ github.run_number }}
+            Tipo: Beta Release
+      
+      - name: Upload to TestFlight (Production)
+        if: github.event.inputs.release_type == 'production'
+        uses: apple-actions/upload-testflight-build@v1
+        continue-on-error: true
+        with:
+          app-path: build/ios/ipa/*.ipa
+          issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ secrets.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+      
+      - name: Crear GitHub Release
+        if: github.event.inputs.release_type == 'production'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.event.inputs.version_name }}-ios
+          name: iOS Release v${{ github.event.inputs.version_name }}
+          body: |
+            ## iOS Release v${{ github.event.inputs.version_name }}
+            
+            **Build Number:** ${{ github.run_number }}
+            **Tipo:** ${{ github.event.inputs.release_type }}
+            
+            ### Archivos generados:
+            - IPA para TestFlight/App Store
+          files: build/ios/ipa/*.ipa
+          draft: false
+          prerelease: false

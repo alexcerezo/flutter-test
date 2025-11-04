@@ -1,0 +1,154 @@
+name: Dependencias y Seguridad
+
+on:
+  schedule:
+    # Ejecutar semanalmente los lunes a las 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+
+jobs:
+  dependency-check:
+    name: Verificación de Dependencias
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+          cache: true
+      
+      - name: Obtener dependencias
+        run: flutter pub get
+      
+      - name: Verificar dependencias obsoletas
+        run: flutter pub outdated
+        continue-on-error: true
+      
+      - name: Verificar vulnerabilidades conocidas
+        run: |
+          flutter pub audit || echo "Audit command not available in this Flutter version"
+        continue-on-error: true
+      
+      - name: Generar reporte de dependencias
+        run: |
+          echo "## Dependencias del Proyecto" > dependency-report.md
+          echo "" >> dependency-report.md
+          echo "### Dependencias directas" >> dependency-report.md
+          flutter pub deps --style=compact >> dependency-report.md || true
+      
+      - name: Upload reporte de dependencias
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-report
+          path: dependency-report.md
+          retention-days: 30
+
+  flutter-version-check:
+    name: Verificar Versión de Flutter
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+          cache: true
+      
+      - name: Verificar versión actual
+        run: |
+          echo "Versión configurada en workflows: 3.24.0"
+          echo "Versión actual de Flutter:"
+          flutter --version
+      
+      - name: Verificar versión disponible en canal stable
+        run: |
+          flutter channel stable
+          flutter upgrade --dry-run || true
+      
+      - name: Comentar si hay actualizaciones disponibles
+        if: github.event_name == 'schedule'
+        uses: actions/github-script@v7
+        continue-on-error: true
+        with:
+          script: |
+            const message = `
+            🔄 **Verificación semanal de dependencias**
+            
+            Se ha ejecutado la verificación automática de dependencias y versión de Flutter.
+            
+            Revisa los artifacts del workflow para ver el reporte completo.
+            
+            **Próximos pasos:**
+            1. Revisar el reporte de dependencias obsoletas
+            2. Actualizar dependencias si es necesario
+            3. Probar la aplicación después de actualizar
+            
+            ---
+            *Generado automáticamente por @La-Cabra*
+            `;
+            
+            // Buscar o crear un issue de tracking
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'dependencies,automated'
+            });
+            
+            if (issues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: '🔄 Reporte semanal de dependencias',
+                body: message,
+                labels: ['dependencies', 'automated']
+              });
+            }
+
+  license-check:
+    name: Verificar Licencias
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+          cache: true
+      
+      - name: Obtener dependencias
+        run: flutter pub get
+      
+      - name: Generar reporte de licencias
+        run: |
+          echo "## Licencias de Dependencias" > licenses-report.md
+          echo "" >> licenses-report.md
+          flutter pub deps --style=compact | head -100 >> licenses-report.md || true
+      
+      - name: Upload reporte de licencias
+        uses: actions/upload-artifact@v4
+        with:
+          name: licenses-report
+          path: licenses-report.md
+          retention-days: 90

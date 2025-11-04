@@ -1,0 +1,137 @@
+name: CD - Android Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Tipo de release'
+        required: true
+        type: choice
+        options:
+          - beta
+          - production
+      version_name:
+        description: 'Nombre de versión (ej: 1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  build-android-release:
+    name: Build Android Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+      
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+          cache: true
+      
+      - name: Cache de dependencias pub
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            ${{ github.workspace }}/.dart_tool
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+      
+      - name: Obtener dependencias
+        run: flutter pub get
+      
+      - name: Ejecutar tests (pre-deploy)
+        run: flutter test
+      
+      - name: Configurar keystore para firma
+        if: github.event.inputs.release_type == 'production'
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/keystore.jks
+          echo "storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> android/key.properties
+          echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> android/key.properties
+          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" >> android/key.properties
+          echo "storeFile=keystore.jks" >> android/key.properties
+      
+      - name: Build Android App Bundle (AAB) para Play Store
+        if: github.event.inputs.release_type == 'production'
+        run: flutter build appbundle --release --build-name=${{ github.event.inputs.version_name }} --build-number=${{ github.run_number }}
+      
+      - name: Build Android APK para distribución interna
+        if: github.event.inputs.release_type == 'beta'
+        run: flutter build apk --release --build-name=${{ github.event.inputs.version_name }} --build-number=${{ github.run_number }}
+      
+      - name: Limpiar archivos sensibles
+        if: always()
+        run: |
+          rm -f android/app/keystore.jks
+          rm -f android/key.properties
+      
+      - name: Upload AAB artifact
+        if: github.event.inputs.release_type == 'production'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release-aab-${{ github.event.inputs.version_name }}
+          path: build/app/outputs/bundle/release/*.aab
+          retention-days: 90
+      
+      - name: Upload APK artifact
+        if: github.event.inputs.release_type == 'beta'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release-apk-${{ github.event.inputs.version_name }}
+          path: build/app/outputs/flutter-apk/*.apk
+          retention-days: 30
+      
+      - name: Deploy to Firebase App Distribution (Beta)
+        if: github.event.inputs.release_type == 'beta'
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        continue-on-error: true
+        with:
+          appId: ${{ secrets.FIREBASE_APP_ID_ANDROID }}
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          groups: testers
+          file: build/app/outputs/flutter-apk/app-release.apk
+          releaseNotes: |
+            Version: ${{ github.event.inputs.version_name }}
+            Build: ${{ github.run_number }}
+            Tipo: Beta Release
+      
+      - name: Upload to Google Play Store (Production)
+        if: github.event.inputs.release_type == 'production'
+        uses: r0adkll/upload-google-play@v1
+        continue-on-error: true
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: ${{ secrets.ANDROID_PACKAGE_NAME }}
+          releaseFiles: build/app/outputs/bundle/release/*.aab
+          track: internal
+          status: completed
+      
+      - name: Crear GitHub Release
+        if: github.event.inputs.release_type == 'production'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.event.inputs.version_name }}-android
+          name: Android Release v${{ github.event.inputs.version_name }}
+          body: |
+            ## Android Release v${{ github.event.inputs.version_name }}
+            
+            **Build Number:** ${{ github.run_number }}
+            **Tipo:** ${{ github.event.inputs.release_type }}
+            
+            ### Archivos generados:
+            - App Bundle (AAB) para Google Play Store
+          files: build/app/outputs/bundle/release/*.aab
+          draft: false
+          prerelease: false
