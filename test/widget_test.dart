@@ -11,20 +11,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_app/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
+  testWidgets('Event Booking App smoke test', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+    await tester.pumpWidget(const EventBookingApp());
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    // Verify that the app shows the events page title.
+    expect(find.text('Eventos Disponibles'), findsOneWidget);
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    // Wait for the events to load
+    await tester.pumpAndSettle();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    // Verify that at least one event is displayed
+    // (Looking for one of our mock events)
+    expect(find.text('Flutter Conference 2024'), findsOneWidget);
   });
 }
+
