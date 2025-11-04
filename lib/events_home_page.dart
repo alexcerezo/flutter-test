@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'event.dart';
-import 'events_notifier.dart';
-import 'event_detail_page.dart';
 import 'package:intl/intl.dart';
+
+import 'event.dart';
+import 'event_detail_page.dart';
+import 'events_notifier.dart';
 
 /// Home page displaying a responsive list of events.
 /// 

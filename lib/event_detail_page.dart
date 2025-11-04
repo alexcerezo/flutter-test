@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
 import 'event.dart';
 import 'events_notifier.dart';
-import 'package:intl/intl.dart';
 
 /// Event detail page with booking functionality.
 /// 

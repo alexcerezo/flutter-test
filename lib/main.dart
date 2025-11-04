@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'events_notifier.dart';
+
+import 'event.dart';
 import 'events_home_page.dart';
+import 'events_notifier.dart';
 
 /// Main entry point of the Event Booking application.
 /// 
