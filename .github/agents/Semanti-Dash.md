@@ -1,5 +1,5 @@
 ---
-name: semanti-dash
+name: 🤓semanti-dash
 description: Specialized agent for accessibility (a11y), WCAG compliance, semantic widgets, and inclusive UI design in Flutter
 tools: ['read', 'search', 'edit']
 ---
