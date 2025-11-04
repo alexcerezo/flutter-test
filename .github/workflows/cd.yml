@@ -1,0 +1,118 @@
+name: CD - Continuous Deployment
+
+# This workflow builds and deploys the application artifacts
+# Runs only on successful merges to main branch
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Allow manual trigger
+
+# Prevent concurrent deployments
+concurrency:
+  group: cd-deployment
+  cancel-in-progress: false
+
+jobs:
+  # Build web application
+  build-web:
+    name: Build Web Application
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+      
+      - name: Install dependencies
+        run: flutter pub get
+      
+      - name: Build web release
+        run: flutter build web --release --verbose
+      
+      - name: Upload web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-release-${{ github.sha }}
+          path: build/web/
+          retention-days: 30
+  
+  # Build Android APK
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+      
+      - name: Setup Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+      
+      - name: Install dependencies
+        run: flutter pub get
+      
+      # Build APK (debug version - for production, use release with signing)
+      - name: Build Android APK
+        run: flutter build apk --debug --verbose
+      
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk-${{ github.sha }}
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 30
+  
+  # Create GitHub Release with artifacts
+  create-release:
+    name: Create GitHub Release
+    needs: [build-web, build-android]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Download web artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: web-release-${{ github.sha }}
+          path: ./release/web/
+      
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: android-apk-${{ github.sha }}
+          path: ./release/android/
+      
+      - name: Create release archive
+        run: |
+          cd release/web && zip -r ../../flutter-web-${{ github.ref_name }}.zip . && cd ../..
+          mv release/android/app-debug.apk flutter-app-${{ github.ref_name }}.apk
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            flutter-web-${{ github.ref_name }}.zip
+            flutter-app-${{ github.ref_name }}.apk
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,71 @@
+name: Security & Dependencies
+
+# This workflow checks for security vulnerabilities and outdated dependencies
+# Runs weekly and on demand
+on:
+  schedule:
+    - cron: '0 0 * * 0' # Every Sunday at midnight UTC
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+
+jobs:
+  # Analyze dependencies for security vulnerabilities
+  security-scan:
+    name: Security Vulnerability Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+      
+      - name: Install dependencies
+        run: flutter pub get
+      
+      # Run pub audit to check for known vulnerabilities
+      - name: Check for security vulnerabilities
+        run: dart pub audit || true
+      
+      # Static analysis with strict mode
+      - name: Run static analysis
+        run: flutter analyze --fatal-infos --fatal-warnings
+  
+  # Check for outdated dependencies
+  dependency-check:
+    name: Check Outdated Dependencies
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+      
+      - name: Install dependencies
+        run: flutter pub get
+      
+      - name: Check for outdated dependencies
+        run: flutter pub outdated
+      
+      # Generate dependency report
+      - name: Generate dependency tree
+        run: flutter pub deps --style=tree > dependency-tree.txt
+      
+      - name: Upload dependency report
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-report
+          path: dependency-tree.txt
+          retention-days: 30

@@ -1,5 +1,10 @@
 # Flutter on Codespaces
 
+[![CI](https://github.com/alexcerezo/flutter-test/actions/workflows/ci.yml/badge.svg)](https://github.com/alexcerezo/flutter-test/actions/workflows/ci.yml)
+[![CD](https://github.com/alexcerezo/flutter-test/actions/workflows/cd.yml/badge.svg)](https://github.com/alexcerezo/flutter-test/actions/workflows/cd.yml)
+[![GitHub Pages](https://github.com/alexcerezo/flutter-test/actions/workflows/pages.yml/badge.svg)](https://github.com/alexcerezo/flutter-test/actions/workflows/pages.yml)
+[![Security](https://github.com/alexcerezo/flutter-test/actions/workflows/security.yml/badge.svg)](https://github.com/alexcerezo/flutter-test/actions/workflows/security.yml)
+
 This is a template repository for developing with [Flutter](https://flutter.dev/) on the web on [GitHub Codespaces](https://github.com/features/codespaces).
 
 Flutter is a cross-platform UI framework by Google for building apps. Codespaces is a cloud-based development environment that lets you run a full-featured IDE in the cloud. This template repository lets you get started with Flutter on Codespaces in just a few clicks.
@@ -76,6 +81,74 @@ If you'd prefer to use the desktop app version of VS Code, you can follow these 
 Running Flutter in Codespaces makes it a bit difficult to run the app in a mobile simulator. However, developing for the web is basically the same as developing for mobile. I'd recommend opening your browser's developer tools and selecting a mobile device to emulate.
 
 If you're using Chrome or another Chromium-based browser, you can open DevTools like [this](https://developer.chrome.com/docs/devtools/open/) and emulate a device like [this](https://developer.chrome.com/docs/devtools/device-mode/). It'll be pretty similar for other browsers like Safari and Firefox.
+
+## CI/CD Pipeline
+
+This repository includes a comprehensive CI/CD pipeline powered by GitHub Actions.
+
+### Continuous Integration (CI)
+
+The CI workflow runs automatically on every pull request and push to `main` or `develop` branches:
+
+- **Code Quality**: Runs `flutter analyze` to check for code issues
+- **Formatting**: Validates code formatting with `flutter format`
+- **Testing**: Executes all unit and widget tests with coverage reporting
+- **Build Validation**: Builds the web app to ensure no build errors
+- **Artifacts**: Uploads build artifacts for review
+
+**Status**: [![CI](https://github.com/alexcerezo/flutter-test/actions/workflows/ci.yml/badge.svg)](https://github.com/alexcerezo/flutter-test/actions/workflows/ci.yml)
+
+### Continuous Deployment (CD)
+
+The CD workflow builds release artifacts on pushes to `main`:
+
+- **Web Build**: Creates production web build
+- **Android Build**: Generates debug APK
+- **Artifact Storage**: Stores builds for 30 days
+- **GitHub Releases**: Creates releases when tagged (e.g., `v1.0.0`)
+
+**Status**: [![CD](https://github.com/alexcerezo/flutter-test/actions/workflows/cd.yml/badge.svg)](https://github.com/alexcerezo/flutter-test/actions/workflows/cd.yml)
+
+### GitHub Pages Deployment
+
+Automatically deploys the web app to GitHub Pages on every push to `main`:
+
+- **Live Demo**: Available at `https://alexcerezo.github.io/flutter-test/`
+- **Automatic Updates**: Deploys automatically on merge to main
+- **Production Build**: Uses optimized release build
+
+**Status**: [![GitHub Pages](https://github.com/alexcerezo/flutter-test/actions/workflows/pages.yml/badge.svg)](https://github.com/alexcerezo/flutter-test/actions/workflows/pages.yml)
+
+### Security & Dependencies
+
+Weekly security scans and dependency checks:
+
+- **Vulnerability Scanning**: Checks for known security issues
+- **Dependency Updates**: Reports outdated packages
+- **Static Analysis**: Strict mode analysis with zero warnings
+
+**Status**: [![Security](https://github.com/alexcerezo/flutter-test/actions/workflows/security.yml/badge.svg)](https://github.com/alexcerezo/flutter-test/actions/workflows/security.yml)
+
+### Local Development
+
+To run the same checks locally before pushing:
+
+```bash
+# Install dependencies
+flutter pub get
+
+# Run analyzer
+flutter analyze
+
+# Check formatting
+flutter format --set-exit-if-changed .
+
+# Run tests with coverage
+flutter test --coverage
+
+# Build web app
+flutter build web --release
+```
 
 ## Codespaces Usage
 

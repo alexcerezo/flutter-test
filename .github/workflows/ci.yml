@@ -1,0 +1,85 @@
+name: CI - Continuous Integration
+
+# This workflow runs on every pull request and push to ensure code quality
+# It validates that code passes linting, tests, and builds successfully
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  push:
+    branches:
+      - main
+      - develop
+
+# Cancel in-progress runs on same branch to save compute resources
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Main CI job that validates code quality, runs tests, and builds the app
+  validate:
+    name: Lint, Test & Build
+    runs-on: ubuntu-latest
+    
+    steps:
+      # Step 1: Checkout the repository code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      # Step 2: Setup Flutter SDK with caching for faster builds
+      - name: Setup Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+          cache-key: 'flutter-:os:-:channel:-:version:-:arch:-:hash:'
+          cache-path: '${{ runner.tool_cache }}/flutter/:channel:-:version:-:arch:'
+      
+      # Step 3: Verify Flutter installation
+      - name: Verify Flutter installation
+        run: |
+          flutter --version
+          flutter doctor -v
+      
+      # Step 4: Install project dependencies with pub cache
+      - name: Install dependencies
+        run: flutter pub get
+      
+      # Step 5: Verify dependencies are up to date
+      - name: Check for outdated dependencies
+        run: flutter pub outdated || true
+      
+      # Step 6: Run Flutter analyzer for code quality (MANDATORY)
+      - name: Analyze code
+        run: flutter analyze
+      
+      # Step 7: Check code formatting
+      - name: Check code formatting
+        run: flutter format --set-exit-if-changed .
+      
+      # Step 8: Run all tests (MANDATORY - Zero failures allowed)
+      - name: Run tests
+        run: flutter test --coverage
+      
+      # Step 9: Upload code coverage report
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        if: always()
+        with:
+          files: ./coverage/lcov.info
+          fail_ci_if_error: false
+      
+      # Step 10: Build web version to ensure build process works
+      - name: Build web app
+        run: flutter build web --release
+      
+      # Step 11: Upload web build artifact for inspection
+      - name: Upload web build artifact
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: web-build
+          path: build/web/
+          retention-days: 7
